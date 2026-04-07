@@ -43,6 +43,7 @@ public class ProjectPlan implements Plan {
 			pjtHist.setBuckets(fld, hist.buckets(fld));
 		return pjtHist;
 	}
+	public Plan getUnderlyingPlan() { return p; }
 
 	private Plan p;
 	private Schema schema = new Schema();
@@ -109,6 +110,6 @@ public class ProjectPlan implements Plan {
 
 	@Override
 	public long recordsOutput() {
-		return (long) histogram().recordsOutput();
+		return p.recordsOutput();
 	}
 }

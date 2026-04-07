@@ -1,107 +1,111 @@
-/*******************************************************************************
- * Copyright 2016, 2017 vanilladb.org contributors
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *******************************************************************************/
 package org.vanilladb.core.query.algebra;
 
-import org.vanilladb.core.sql.Type;
-import org.vanilladb.core.server.VanillaDb;
 import org.vanilladb.core.sql.Schema;
-import org.vanilladb.core.storage.metadata.TableInfo;
-import org.vanilladb.core.storage.metadata.TableNotFoundException;
+import org.vanilladb.core.sql.Type;
 import org.vanilladb.core.storage.metadata.statistics.Histogram;
-import org.vanilladb.core.storage.metadata.statistics.TableStatInfo;
-import org.vanilladb.core.storage.tx.Transaction;
+import org.vanilladb.core.query.algebra.materialize.SortPlan;
+import org.vanilladb.core.query.algebra.materialize.GroupByPlan;
 
-/**
- * The {@link Plan} class corresponding to a table.
- */
 public class ExplainPlan implements Plan {
     private Plan p;
-    private Schema schema;
+    private Schema mySchema;
+	private Histogram Hist;
 
-	/**
-	 * Creates a leaf node in the query tree corresponding to the specified
-	 * table.
-	 * 
-	 * @param tblName
-	 *            the name of the table
-	 * @param tx
-	 *            the calling transaction
-	 */
-	public ExplainPlan(Plan p) {
-		this.p = p;
-        this.schema = new Schema();
-        this.schema.addField("query-plan", Type.VARCHAR(500));
-	}
-
-	/**
-	 * Creates a table scan for this query.
-	 * 
-	 * @see Plan#open()
-	 */
-	@Override
-	public Scan open() {
-		return new ExplainScan(p.open(),this);
-	}
-
-    public String getTreeString(){
-        return TreeString(p, 0);
+    public ExplainPlan(Plan p) {
+        this.p = p;
+        this.mySchema = new Schema();
+        // 定義 EXPLAIN 結果只會有一個欄位叫做 query-plan
+        this.mySchema.addField("query-plan", Type.VARCHAR(70));
     }
 
-    private String TreeString(Plan p, int level){
-        StringBuilder b = new StringBuilder();
-        for(int i=0;i<level;i++) b.append('\t');
-        b.append("->")
-        .append(p.getClass().getSimpleName())
-        .append(" (#blks=").append(p.blocksAccessed())
-        .append(", #recs=").append(p.recordsOutput())
-        .append(")\n");
-
-        return b.toString();
+    @Override
+    public Scan open() {
+        // 傳遞自己 (this) 入去，等 Scan 可以攞到 TreeString
+        return new ExplainScan(this);
     }
 
-	/**
-	 * Estimates the number of block accesses for the table, which is obtainable
-	 * from the statistics manager.
-	 * 
-	 * @see Plan#blocksAccessed()
-	 */
-	@Override
-	public long blocksAccessed() {
-		return p.blocksAccessed();
+    @Override
+    public Schema schema() {
+        return mySchema;
+    }
+
+    @Override
+    public long blocksAccessed() {
+        return p.blocksAccessed();
+    }
+
+    @Override
+    public long recordsOutput() {
+        return p.recordsOutput();
+    }
+
+    /**
+     * 核心遞迴方法：用嚟產生好似 Sample Output 咁樣嘅樹狀字串
+     */
+    public String getTreeString() {
+        StringBuilder sb = new StringBuilder();
+		sb.append("\n");
+        buildTree(p, sb, 0);
+		sb.append("\n\nActual #recs: ").append(getActualRecs(p));
+        return sb.toString();
+    }
+
+	private long getActualRecs(Plan currentPlan) {
+    // 通常 ProjectPlan 嘅下一層就係經過過濾/排序後嘅最終紀錄數
+    if (currentPlan instanceof ProjectPlan) {
+        Plan child = getChildPlan(currentPlan);
+        return (child != null) ? child.recordsOutput() : 0;
+    }
+    return currentPlan.recordsOutput();
 	}
-    /** 
-    * @see Plan#histogram()
-	*/
-	@Override
+
+
+	private Plan getChildPlan(Plan currentPlan) {
+    if (currentPlan instanceof ProjectPlan) {
+        return ((ProjectPlan) currentPlan).getUnderlyingPlan();
+    } else if (currentPlan instanceof SelectPlan) {
+        return ((SelectPlan) currentPlan).getUnderlyingPlan();
+    } else if (currentPlan instanceof SortPlan) {
+        return ((SortPlan) currentPlan).getUnderlyingPlan();
+    } else if (currentPlan instanceof GroupByPlan) {
+        return ((GroupByPlan) currentPlan).getUnderlyingPlan();
+    }
+    return null;
+	}	
+
+    private void buildTree(Plan currentPlan, StringBuilder sb, int level) {
+        // 1. 處理縮排 (Indentation)
+        for (int i = 0; i < level; i++) {
+            sb.append("    ");
+        }
+
+        // 2. 印出當前節點資訊
+        sb.append("->")
+          .append(currentPlan.getClass().getSimpleName())
+          .append(" (#blks=").append(currentPlan.blocksAccessed())
+          .append(", #recs=").append(currentPlan.recordsOutput())
+          .append(")\n");
+
+        // 3. 遞迴處理子節點 (根據 VanillaDB 唔同嘅 Plan 類型)
+        // 註：你需要根據你 Project 嘅繼承關係嚟轉型 (Type Casting)
+        if (currentPlan instanceof ProjectPlan) {
+            buildTree(((ProjectPlan) currentPlan).getUnderlyingPlan(), sb, level + 1);
+        } else if (currentPlan instanceof SelectPlan) {
+            buildTree(((SelectPlan) currentPlan).getUnderlyingPlan(), sb, level + 1);
+        } else if (currentPlan instanceof SortPlan) {
+            buildTree(((SortPlan) currentPlan).getUnderlyingPlan(), sb, level + 1);
+        } else if (currentPlan instanceof GroupByPlan) {
+            buildTree(((GroupByPlan) currentPlan).getUnderlyingPlan(), sb, level + 1);
+        } else if (currentPlan instanceof ProductPlan) {
+            // ProductPlan 通常有兩邊 (Left/Right)
+            buildTree(((ProductPlan) currentPlan).getLeftPlan(), sb, level + 1);
+            buildTree(((ProductPlan) currentPlan).getRightPlan(), sb, level + 1);
+        }
+        // TablePlan 係最底層，唔需要再遞迴
+    }
+
 	public Histogram histogram() {
-		return p.histogram();
-	}
-	/**
-	 * Determines the schema of the table, which is obtainable from the catalog
-	 * manager.
-	 * 
-	 * @see Plan#schema()
-	 */
-	@Override
-	public Schema schema() {
-		return p.schema();
+		return Hist;
 	}
 
-	@Override
-	public long recordsOutput() {
-		return 1;
-	}
 }

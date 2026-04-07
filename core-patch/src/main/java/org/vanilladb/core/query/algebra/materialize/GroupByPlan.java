@@ -126,6 +126,7 @@ public class GroupByPlan extends ReduceRecordsPlan {
 		}
 		return syncHistogram(gbHist);
 	}
+	
 
 	private static Bucket sumBucket(Collection<Bucket> dist, double numGroups) {
 		Constant sumLow = null, sumHigh = new DoubleConstant(1.0);
@@ -326,6 +327,8 @@ public class GroupByPlan extends ReduceRecordsPlan {
 	public Histogram histogram() {
 		return hist;
 	}
+
+	public Plan getUnderlyingPlan() { return sp; }
 
 	@Override
 	public long recordsOutput() {

@@ -4,48 +4,42 @@ import org.vanilladb.core.sql.Constant;
 import org.vanilladb.core.sql.VarcharConstant;
 
 public class ExplainScan implements Scan {
-    private Scan underlyingScan;
-    private ExplainPlan plan;
-    private String resultRecord = null;
-    private boolean hasAccessed = false;
+    private String planStr;
+    private boolean isRead = false;
 
-    public ExplainScan(Scan s, ExplainPlan p) {
-        this.underlyingScan = s;
-        this.plan = p;
+    public ExplainScan(ExplainPlan p) {
+        this.planStr = p.getTreeString();
+    }
+
+    @Override
+    public void beforeFirst() {
+        isRead = false;
     }
 
     @Override
     public boolean next() {
-        if (hasAccessed) return false;
-
-        long actualRecs = 0;
-        underlyingScan.beforeFirst();
-        while (underlyingScan.next()) {
-            actualRecs++;
+        if (!isRead) {
+            isRead = true;
+            return true; // 淨係會有一行結果
         }
-        underlyingScan.close();
-        
-        StringBuilder sb = new StringBuilder();
-        sb.append(plan.getTreeString());
-        sb.append("\nActual #recs: ").append(actualRecs);
-        
-        resultRecord = sb.toString();
-        hasAccessed = true;
-        return true;
+        return false;
     }
 
     @Override
     public Constant getVal(String fldName) {
         if (fldName.equals("query-plan")) {
-            return new VarcharConstant(resultRecord);
+            return new VarcharConstant(planStr);
         }
-        throw new RuntimeException("field not found");
+        throw new RuntimeException("Field not found: " + fldName);
     }
 
     @Override
-    public void close() { underlyingScan.close(); }
+    public void close() {
+        
+    }
+
     @Override
-    public void beforeFirst() { hasAccessed = false; }
-    @Override
-    public boolean hasField(String fldName) { return fldName.equals("query-plan"); }
+    public boolean hasField(String fldName) {
+        return fldName.equals("query-plan");
+    }
 }

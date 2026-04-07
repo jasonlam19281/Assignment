@@ -340,6 +340,8 @@ public class SelectPlan extends ReduceRecordsPlan {
 		return new SelectScan(s, pred);
 	}
 
+	public Plan getUnderlyingPlan() { return p; }
+
 	/**
 	 * Estimates the number of block accesses in the selection.
 	 * 

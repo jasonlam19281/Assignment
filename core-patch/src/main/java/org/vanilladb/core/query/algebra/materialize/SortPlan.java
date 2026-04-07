@@ -101,6 +101,8 @@ public class SortPlan implements Plan {
 		return new SortScan(runs, comp);
 	}
 
+	public Plan getUnderlyingPlan() { return p; }
+
 	/**
 	 * Returns the number of blocks in the sorted table, which is the same as it
 	 * would be in a materialized table. It does <em>not</em> include the

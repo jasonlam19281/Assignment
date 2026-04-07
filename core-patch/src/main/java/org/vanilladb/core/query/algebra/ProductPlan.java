@@ -73,6 +73,13 @@ public class ProductPlan implements Plan {
 	 * @param p2
 	 *            the right-hand subquery
 	 */
+
+	public Plan getLeftPlan(){
+		return p1;
+	}
+	public Plan getRightPlan(){
+		return p2;
+	}
 	public ProductPlan(Plan p1, Plan p2) {
 		this.p1 = p1;
 		this.p2 = p2;
@@ -80,6 +87,8 @@ public class ProductPlan implements Plan {
 		schema.addAll(p2.schema());
 		hist = productHistogram(p1.histogram(), p2.histogram());
 	}
+
+	
 
 	/**
 	 * Creates a product scan for this query.
