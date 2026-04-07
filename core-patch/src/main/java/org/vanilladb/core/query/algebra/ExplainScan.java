@@ -20,7 +20,7 @@ public class ExplainScan implements Scan {
     public boolean next() {
         if (!isRead) {
             isRead = true;
-            return true; // 淨係會有一行結果
+            return true; 
         }
         return false;
     }
